@@ -45,6 +45,13 @@ class Repository:
         rows: list[sqlite3.Row] = self.connection.execute("SELECT * FROM entities ORDER BY kind, name").fetchall()
         return [dict(row) for row in rows]
 
+    def ensure_person_entity(self, username: str, display_name: str) -> dict[str, Any]:
+        """Garantit qu'un membre connecté peut être choisi comme destinataire."""
+        row: sqlite3.Row | None = self.connection.execute("SELECT * FROM entities WHERE kind = 'person' AND owner_username = ?", (username,)).fetchone()
+        if row is not None:
+            return dict(row)
+        return self.create_entity(display_name, "person", username)
+
     def add_entity_member(self, entity_id: int, username: str, is_manager: bool) -> None:
         """Associe un membre ou gestionnaire à une entité collective."""
         self.entity_by_id(entity_id)
@@ -110,6 +117,22 @@ class Repository:
         rows: list[sqlite3.Row] = self.connection.execute(MESSAGE_QUERY + " WHERE " + access + clause + " GROUP BY m.id ORDER BY m.created_at DESC", params).fetchall()
         return [dict(row) for row in rows]
 
+    def list_community_messages(self, viewer: str) -> list[dict[str, Any]]:
+        """Liste les mercis approuvés mis en lumière dans l'espace commun."""
+        rows: list[sqlite3.Row] = self.connection.execute(
+            MESSAGE_QUERY + " WHERE m.visibility = 'common' AND m.status = 'approved' GROUP BY m.id ORDER BY m.created_at DESC",
+            (viewer,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def list_pending_messages(self, viewer: str) -> list[dict[str, Any]]:
+        """Liste les mercis nécessitant une décision de modération."""
+        rows: list[sqlite3.Row] = self.connection.execute(
+            MESSAGE_QUERY + " WHERE m.status = 'pending' GROUP BY m.id ORDER BY m.created_at ASC",
+            (viewer,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def moderate(self, message_id: int, moderator: str, decision: str, reason: str | None) -> dict[str, Any]:
         """Approuve ou refuse un merci en attente."""
         if decision not in {MessageStatus.APPROVED, MessageStatus.REJECTED}:
@@ -145,7 +168,22 @@ class Repository:
 
     def list_challenges(self) -> list[dict[str, Any]]:
         """Liste les challenges."""
-        return [dict(row) for row in self.connection.execute("SELECT * FROM challenges ORDER BY closes_at DESC").fetchall()]
+        query: str = """SELECT c.*, e.name AS winner_name
+        FROM challenges c LEFT JOIN challenge_candidates cc ON cc.id = c.winner_candidate_id
+        LEFT JOIN entities e ON e.id = cc.entity_id ORDER BY c.closes_at DESC"""
+        return [dict(row) for row in self.connection.execute(query).fetchall()]
+
+    def list_candidates(self, challenge_id: int, username: str) -> list[dict[str, Any]]:
+        """Retourne les candidatures et le choix déjà exprimé par le membre."""
+        self.challenge_by_id(challenge_id)
+        query: str = """SELECT cc.id, cc.challenge_id, cc.entity_id, cc.nominated_by,
+        e.name, e.kind, COUNT(cv.username) AS votes,
+        EXISTS(SELECT 1 FROM challenge_votes mine WHERE mine.challenge_id = cc.challenge_id
+        AND mine.candidate_id = cc.id AND mine.username = ?) AS voted_by_me
+        FROM challenge_candidates cc JOIN entities e ON e.id = cc.entity_id
+        LEFT JOIN challenge_votes cv ON cv.candidate_id = cc.id
+        WHERE cc.challenge_id = ? GROUP BY cc.id ORDER BY votes DESC, e.name ASC"""
+        return [dict(row) for row in self.connection.execute(query, (username, challenge_id)).fetchall()]
 
     def nominate(self, challenge_id: int, entity_id: int, username: str) -> dict[str, Any]:
         """Inscrit une candidature interne à un challenge ouvert."""

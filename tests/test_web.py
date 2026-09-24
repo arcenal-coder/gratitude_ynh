@@ -44,6 +44,41 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(201, status)
         self.assertEqual("pending", body["data"]["status"])
 
+    def test_home_serves_the_complete_web_interface(self) -> None:
+        """La page membre charge les ressources de l'interface."""
+        connection = HTTPConnection("127.0.0.1", self.server.server_port)
+        connection.request("GET", "/", headers={"X-Remote-User": "alice"})
+        response = connection.getresponse()
+        page = response.read().decode("utf-8")
+        connection.close()
+        self.assertEqual(200, response.status)
+        self.assertIn("assets/app.css", page)
+        self.assertIn("assets/app.js", page)
+
+    def test_static_interface_assets_are_available(self) -> None:
+        """Les fichiers nécessaires à l'application monopage sont livrés."""
+        for path, content_type in (("/assets/app.css", "text/css"), ("/assets/app.js", "application/javascript")):
+            connection = HTTPConnection("127.0.0.1", self.server.server_port)
+            connection.request("GET", path)
+            response = connection.getresponse()
+            content = response.read().decode("utf-8")
+            connection.close()
+            self.assertEqual(200, response.status)
+            self.assertIn(content_type, response.getheader("Content-Type"))
+            self.assertGreater(len(content), 500)
+
+    def test_challenge_candidates_show_votes(self) -> None:
+        """Le parcours challenge fournit les candidatures au membre connecté."""
+        entity_id = self._create_entity()
+        status, body = self._request("POST", "/api/v1/challenges", {"title": "Amabilité", "theme": "amabilité", "opens_at": "2026-09-01", "closes_at": "2026-10-01"}, "alice")
+        self.assertEqual(201, status)
+        challenge_id = body["data"]["id"]
+        status, _ = self._request("POST", f"/api/v1/challenges/{challenge_id}/candidates/create", {"entity_id": entity_id}, "bob")
+        self.assertEqual(201, status)
+        status, body = self._request("GET", f"/api/v1/challenges/{challenge_id}/candidates", username="bob")
+        self.assertEqual(200, status)
+        self.assertEqual("Équipe terrain", body["data"][0]["name"])
+
     def _create_entity(self) -> int:
         """Crée un destinataire depuis le compte administrateur."""
         status, body = self._request("POST", "/api/v1/entities", {"name": "Équipe terrain", "kind": "team"}, "alice")
