@@ -55,7 +55,7 @@ class RepositoryTests(unittest.TestCase):
 
     def test_challenge_accepts_only_one_vote_per_member(self) -> None:
         """Un scrutin empêche le second vote du même membre."""
-        challenge = self.repository.create_challenge("Amabilité", "amabilité", "2026-09-01", "2026-09-30")
+        challenge = self.repository.create_challenge("Amabilité", "amabilité", "2000-01-01", "2999-01-01")
         candidate = self.repository.nominate(challenge["id"], self.bob["id"], "alice")
         self.repository.vote(challenge["id"], candidate["id"], "alice")
         with self.assertRaises(DomainError):

@@ -70,7 +70,7 @@ class ApiTests(unittest.TestCase):
     def test_challenge_candidates_show_votes(self) -> None:
         """Le parcours challenge fournit les candidatures au membre connecté."""
         entity_id = self._create_entity()
-        status, body = self._request("POST", "/api/v1/challenges", {"title": "Amabilité", "theme": "amabilité", "opens_at": "2026-09-01", "closes_at": "2026-10-01"}, "alice")
+        status, body = self._request("POST", "/api/v1/challenges", {"title": "Amabilité", "theme": "amabilité", "opens_at": "2000-01-01", "closes_at": "2999-01-01"}, "alice")
         self.assertEqual(201, status)
         challenge_id = body["data"]["id"]
         status, _ = self._request("POST", f"/api/v1/challenges/{challenge_id}/candidates/create", {"entity_id": entity_id}, "bob")
@@ -78,6 +78,16 @@ class ApiTests(unittest.TestCase):
         status, body = self._request("GET", f"/api/v1/challenges/{challenge_id}/candidates", username="bob")
         self.assertEqual(200, status)
         self.assertEqual("Équipe terrain", body["data"][0]["name"])
+
+    def test_admin_can_enable_immediate_publication(self) -> None:
+        """La règle de modération est persistée et modifiable par administration."""
+        status, body = self._request("POST", "/api/v1/settings", {"require_moderation": False}, "alice")
+        self.assertEqual(200, status)
+        self.assertFalse(body["data"]["require_moderation"])
+        entity_id = self._create_entity()
+        status, body = self._request("POST", "/api/v1/messages", {"recipient_ids": [entity_id], "body": "Merci pour votre intervention rapide."}, "bob")
+        self.assertEqual(201, status)
+        self.assertEqual("approved", body["data"]["status"])
 
     def _create_entity(self) -> int:
         """Crée un destinataire depuis le compte administrateur."""

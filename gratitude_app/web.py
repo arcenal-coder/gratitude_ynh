@@ -51,6 +51,7 @@ class GratitudeHandler(BaseHTTPRequestHandler):
             "/api/v1/community": self._community,
             "/api/v1/challenges": self._challenges,
             "/api/v1/moderation": self._moderation_queue,
+            "/api/v1/settings": self._settings,
         }
 
     def _post_routes(self) -> dict[str, Callable[[], None]]:
@@ -59,6 +60,7 @@ class GratitudeHandler(BaseHTTPRequestHandler):
             "/api/v1/entities": self._create_entity,
             "/api/v1/messages": self._create_message,
             "/api/v1/challenges": self._create_challenge,
+            "/api/v1/settings": self._update_settings,
         }
 
     def _dispatch(self, routes: dict[str, Callable[[], None]], fallback: Callable[[], None] | None = None) -> None:
@@ -113,6 +115,8 @@ class GratitudeHandler(BaseHTTPRequestHandler):
 
     def _payload(self) -> dict[str, Any]:
         """Lit un objet JSON borné à un mégaoctet."""
+        if self.headers.get("Content-Type", "").split(";", 1)[0] != "application/json":
+            raise DomainError("Le type de contenu doit être application/json.")
         length: int = int(self.headers.get("Content-Length", "0"))
         if length < 1 or length > 1_000_000:
             raise DomainError("La taille de la requête est invalide.")
@@ -167,6 +171,11 @@ class GratitudeHandler(BaseHTTPRequestHandler):
         identity: dict[str, Any] = self._require_moderator()
         self._json(HTTPStatus.OK, {"data": self.server.repository.list_pending_messages(identity["username"])})
 
+    def _settings(self) -> None:
+        """Expose les règles de publication à l'administrateur."""
+        self._require_admin()
+        self._json(HTTPStatus.OK, {"data": {"require_moderation": self.server.repository.requires_moderation()}})
+
     def _create_entity(self) -> None:
         """Ajoute une entité par administration."""
         self._require_admin()
@@ -177,7 +186,7 @@ class GratitudeHandler(BaseHTTPRequestHandler):
     def _create_message(self) -> None:
         """Crée un merci soumis à la règle de modération."""
         identity: dict[str, Any] = self._identity()
-        message: dict[str, Any] = self.server.repository.create_message(identity["username"], validate_message_draft(self._payload()), self.server.require_moderation)
+        message: dict[str, Any] = self.server.repository.create_message(identity["username"], validate_message_draft(self._payload()), self.server.repository.requires_moderation())
         self._json(HTTPStatus.CREATED, {"data": message})
 
     def _create_challenge(self) -> None:
@@ -186,6 +195,15 @@ class GratitudeHandler(BaseHTTPRequestHandler):
         payload: dict[str, Any] = self._payload()
         challenge: dict[str, Any] = self.server.repository.create_challenge(str(payload.get("title", "")), str(payload.get("theme", "")), str(payload.get("opens_at", "")), str(payload.get("closes_at", "")))
         self._json(HTTPStatus.CREATED, {"data": challenge})
+
+    def _update_settings(self) -> None:
+        """Met à jour le mode de publication choisi par l'administrateur."""
+        self._require_admin()
+        payload: dict[str, Any] = self._payload()
+        required: object = payload.get("require_moderation")
+        if not isinstance(required, bool):
+            raise DomainError("require_moderation doit être un booléen.")
+        self._json(HTTPStatus.OK, {"data": {"require_moderation": self.server.repository.set_requires_moderation(required)}})
 
     def _dynamic_get(self) -> None:
         """Route les lectures dépendant d'un identifiant."""

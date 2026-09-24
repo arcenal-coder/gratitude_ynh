@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,18 @@ class Repository:
         if row is not None:
             return dict(row)
         return self.create_entity(display_name, "person", username)
+
+    def requires_moderation(self) -> bool:
+        """Retourne la règle de publication active de l'organisation."""
+        row: sqlite3.Row | None = self.connection.execute("SELECT value FROM settings WHERE name = 'require_moderation'").fetchone()
+        return row is None or row["value"] == "true"
+
+    def set_requires_moderation(self, required: bool) -> bool:
+        """Enregistre la règle de publication choisie par l'administrateur."""
+        value: str = "true" if required else "false"
+        self.connection.execute("INSERT INTO settings(name, value) VALUES('require_moderation', ?) ON CONFLICT(name) DO UPDATE SET value=excluded.value", (value,))
+        self.connection.commit()
+        return self.requires_moderation()
 
     def add_entity_member(self, entity_id: int, username: str, is_manager: bool) -> None:
         """Associe un membre ou gestionnaire à une entité collective."""
@@ -189,17 +202,26 @@ class Repository:
         """Inscrit une candidature interne à un challenge ouvert."""
         self.entity_by_id(entity_id)
         challenge: dict[str, Any] = self.challenge_by_id(challenge_id)
-        if challenge["status"] != "open":
-            raise DomainError("Ce challenge n'accepte plus de candidature.")
-        cursor: sqlite3.Cursor = self.connection.execute("INSERT OR IGNORE INTO challenge_candidates(challenge_id, entity_id, nominated_by) VALUES(?, ?, ?)", (challenge_id, entity_id, username))
+        self._require_open_challenge(challenge)
+        existing: sqlite3.Row | None = self.connection.execute("SELECT id FROM challenge_candidates WHERE challenge_id = ? AND entity_id = ?", (challenge_id, entity_id)).fetchone()
+        if existing is not None:
+            return {"id": int(existing["id"]), "challenge_id": challenge_id, "entity_id": entity_id}
+        cursor: sqlite3.Cursor = self.connection.execute("INSERT INTO challenge_candidates(challenge_id, entity_id, nominated_by) VALUES(?, ?, ?)", (challenge_id, entity_id, username))
         self.connection.commit()
         return {"id": cursor.lastrowid, "challenge_id": challenge_id, "entity_id": entity_id}
+
+    def _require_open_challenge(self, challenge: dict[str, Any]) -> None:
+        """Refuse toute participation hors période annoncée."""
+        if challenge["status"] != "open":
+            raise DomainError("Ce challenge n'accepte plus de candidature.")
+        today: str = date.today().isoformat()
+        if not challenge["opens_at"] <= today <= challenge["closes_at"]:
+            raise DomainError("Ce challenge n'est pas ouvert aux participations aujourd'hui.")
 
     def vote(self, challenge_id: int, candidate_id: int, username: str) -> None:
         """Enregistre un vote unique par membre et challenge."""
         challenge: dict[str, Any] = self.challenge_by_id(challenge_id)
-        if challenge["status"] != "open":
-            raise DomainError("Le vote est clôturé.")
+        self._require_open_challenge(challenge)
         candidate: sqlite3.Row | None = self.connection.execute("SELECT id FROM challenge_candidates WHERE id = ? AND challenge_id = ?", (candidate_id, challenge_id)).fetchone()
         if candidate is None:
             raise DomainError("Candidature introuvable.")
@@ -234,6 +256,7 @@ JOIN entities e ON e.id = mr.entity_id"""
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, display_name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'member');
+CREATE TABLE IF NOT EXISTS settings (name TEXT PRIMARY KEY, value TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS entities (id INTEGER PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, owner_username TEXT REFERENCES users(username));
 CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY, author_username TEXT NOT NULL REFERENCES users(username), body TEXT NOT NULL, is_anonymous INTEGER NOT NULL, visibility TEXT NOT NULL, strength TEXT, challenge_id INTEGER, status TEXT NOT NULL, created_at TEXT NOT NULL, moderated_by TEXT, moderated_at TEXT, moderation_reason TEXT);
 CREATE TABLE IF NOT EXISTS message_recipients (message_id INTEGER NOT NULL REFERENCES messages(id), entity_id INTEGER NOT NULL REFERENCES entities(id), PRIMARY KEY(message_id, entity_id));
