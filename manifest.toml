@@ -41,7 +41,7 @@ type = "user"
 
 [resources.permissions]
 main.url = "/"
-main.allowed = "users"
+main.allowed = "all_users"
 
 [resources.ports]
 main.default = 8080
