@@ -1,0 +1,50 @@
+packaging_format = 2
+id = "gratitude"
+name = "Gratitude"
+description.en = "Internal recognition wall"
+description.fr = "Mur de reconnaissance interne"
+version = "0.1.0~ynh1"
+maintainers = ["ARCenal"]
+
+[upstream]
+license = "proprietary"
+website = "https://github.com/ARCenal"
+code = "https://github.com/ARCenal/gratitude_ynh"
+
+[integration]
+yunohost = ">= 12.0"
+architectures = "all"
+multi_instance = true
+ldap = true
+sso = true
+disk = "20M"
+ram.build = "20M"
+ram.runtime = "30M"
+
+[install.domain]
+type = "domain"
+
+[install.path]
+type = "path"
+default = "/gratitude"
+
+[install.admin]
+type = "user"
+
+[resources]
+
+[resources.system_user]
+
+[resources.install_dir]
+
+[resources.data_dir]
+
+[resources.permissions]
+main.url = "/"
+main.allowed = "users"
+
+[resources.ports]
+main.default = 8080
+
+[resources.apt]
+packages = "python3"

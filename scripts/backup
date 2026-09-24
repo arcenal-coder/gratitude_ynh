@@ -1,0 +1,10 @@
+#!/bin/bash
+set -eu
+source /usr/share/yunohost/helpers
+
+ynh_systemd_action --service_name="$app" --action="stop" --log_path="systemd"
+ynh_backup "$install_dir"
+ynh_backup "$data_dir"
+ynh_backup "/etc/nginx/conf.d/$domain.d/$app.conf"
+ynh_backup "/etc/systemd/system/$app.service"
+ynh_systemd_action --service_name="$app" --action="start" --log_path="systemd"

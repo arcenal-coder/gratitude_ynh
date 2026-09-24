@@ -1,0 +1,8 @@
+#!/bin/bash
+set -eu
+source /usr/share/yunohost/helpers
+
+ynh_systemd_action --service_name="$app" --action="stop" --log_path="systemd" || true
+ynh_config_remove --template="nginx.conf"
+ynh_config_remove --template="gratitude.service"
+systemctl daemon-reload

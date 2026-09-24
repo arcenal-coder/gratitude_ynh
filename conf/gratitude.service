@@ -1,0 +1,17 @@
+[Unit]
+Description=Gratitude internal recognition application
+After=network.target
+
+[Service]
+Type=simple
+User=__APP__
+Group=__APP__
+Environment=GRATITUDE_DATABASE=__DATA_DIR__/gratitude.sqlite3
+Environment=GRATITUDE_ADMIN=__ADMIN__
+Environment=GRATITUDE_PORT=__PORT__
+WorkingDirectory=__INSTALL_DIR__
+ExecStart=/usr/bin/python3 -m gratitude_app.server
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

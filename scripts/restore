@@ -1,0 +1,10 @@
+#!/bin/bash
+set -eu
+source /usr/share/yunohost/helpers
+
+ynh_restore "$install_dir"
+ynh_restore "$data_dir"
+ynh_restore "/etc/nginx/conf.d/$domain.d/$app.conf"
+ynh_restore "/etc/systemd/system/$app.service"
+systemctl daemon-reload
+ynh_systemd_action --service_name="$app" --action="start" --log_path="systemd"
