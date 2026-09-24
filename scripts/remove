@@ -3,6 +3,6 @@ set -eu
 source /usr/share/yunohost/helpers
 
 ynh_systemd_action --service_name="$app" --action="stop" --log_path="systemd" || true
-ynh_safe_rm "/etc/nginx/conf.d/$domain.d/$app.conf"
+ynh_remove_nginx_config
 ynh_safe_rm "/etc/systemd/system/$app.service"
 systemctl daemon-reload
